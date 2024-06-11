@@ -49,13 +49,12 @@ class Processor:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        glfw.terminate()
         glDeleteBuffers(1, [self.vbo])
-        glDeleteBuffers(1., [self.ebo])
+        glDeleteBuffers(1, [self.ebo])
         glDeleteVertexArrays(1, [self.vao])
         glDeleteTextures(1, [self.tex_id])
+        glfw.terminate()
         self.capture.release()
-        cv2.destroyAllWindows()
 
     def _init_window(self):
         if not glfw.init():
@@ -116,9 +115,9 @@ class Processor:
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat), None)
         glEnableVertexAttribArray(0)
 
-        # unbind again:
-        # glBindBuffer(GL_ARRAY_BUFFER, 0)
-        # glBindVertexArray(0)
+        # unbind again - unclear whether important
+        glBindBuffer(GL_ARRAY_BUFFER, 0)
+        glBindVertexArray(0)
 
         return vao, vbo, ebo
 
@@ -140,7 +139,8 @@ class Processor:
             frame.tobytes()
         )
 
-    def raise_gl_error_if_exists(self):
+    @staticmethod
+    def raise_gl_error_if_exists():
         gl_error = glGetError()
         if gl_error:
             print("GL Error:", gl_error)
@@ -154,17 +154,9 @@ class Processor:
             print("LOAD TEXTURE FAILED")
             raise e
 
-        glClearColor(0.2, 0.3, 0.3, 1.0)
+        glClearColor(1.0, 0.3, 0.3, 1.0)
         glClear(GL_COLOR_BUFFER_BIT)
 
-        try:
-            self.vao, self.vbo, self.ebo = self._create_objects()
-            self.raise_gl_error_if_exists()
-        except Exception as e:
-            print("OBJECT CREATION FAILED")
-            raise e
-
-        # Draw textured quad with shader program
         try:
             glUseProgram(self.program)
             self.raise_gl_error_if_exists()
@@ -201,7 +193,7 @@ class Processor:
             print("... Errors in Shaders, let's just give up.")
             return
 
-        while not glfw.window_should_close(self.window) and not self.key_char_pressed('q'):
+        while not glfw.window_should_close(self.window):
             ret, frame = self.capture.read()
             if not ret:
                 break
@@ -213,7 +205,3 @@ class Processor:
         in_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         normalized = cv2.normalize(in_rgb, None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
         return normalized.astype(np.uint8)
-
-    @staticmethod
-    def key_char_pressed(char: str):
-        return cv2.waitKey(1) & 0xFF == ord(char)
