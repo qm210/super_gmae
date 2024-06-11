@@ -1,10 +1,11 @@
+import time
 import picamera2
 import cv2
 import numpy as np
 
-print("OpenCV version", cv2.__version__)
-
 """
+This was my attempt for the Raspberry Pi. Ignore for now.
+
 Does not work real-time, but records a file with picamera2 and displays that with cv2
 """
 
