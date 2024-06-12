@@ -4,6 +4,7 @@ from time import perf_counter
 from typing import Optional
 
 import cv2
+import glfw
 
 
 def timestamp():
@@ -50,3 +51,23 @@ class UniformLocations:
     sampler: int
     resolution: int
     time: int
+
+
+@dataclass
+class TitleInfo:
+    name: str
+    is_compiling: bool = False
+
+    @property
+    def full_title(self):
+        result = self.name
+        if self.is_compiling:
+            result += " (Compiling...)"
+        return result
+
+    def update(self, window, name=None, is_compiling=None):
+        if name is not None:
+            self.name = name
+        if is_compiling is not None:
+            self.is_compiling = is_compiling
+        glfw.set_window_title(window, self.full_title)

@@ -21,5 +21,5 @@ class LoopState:
     def read(cls, processor: "Processor"):
         return cls(
             f5_pressed=key_pressed(processor.window, glfw.KEY_F5),
-            compiling=processor.is_compiling,
+            compiling=processor.info.is_compiling,
         )

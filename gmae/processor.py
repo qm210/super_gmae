@@ -1,18 +1,17 @@
-import threading
 from pathlib import Path
 from time import perf_counter
+from tkinter import Tk, messagebox
 
 import cv2
 import glfw
 import numpy as np
-import pygame
 
 from OpenGL.GL import *
 from OpenGL.GL import shaders
 from OpenGL.GLUT import *
 
 from gmae.loop_state import LoopState, key_pressed
-from gmae.utils import log, CaptureDeviceInfo, UniformLocations
+from gmae.utils import log, CaptureDeviceInfo, UniformLocations, TitleInfo
 
 WINDOW_HEIGHT = 1080
 
@@ -31,16 +30,16 @@ class Processor:
 
         self.height = WINDOW_HEIGHT
         self.width = int(WINDOW_HEIGHT * self.capture_info.width / self.capture_info.height)
+        self.info = TitleInfo("SUPER GMAE")
 
-        pygame.init()
-        self.overlay = pygame.display.set_mode(
-            (self.width, self.height),
-            pygame.DOUBLEBUF | pygame.OPENGL | pygame.HIDDEN
-        )
         glfw.error_callback = self._glfw_error_callback
 
         self.window = self.init_window()
         glfw.make_context_current(self.window)
+
+        # for now we use tkinter for a message box for errors
+        self.tk_root = Tk()
+        self.tk_root.withdraw()
 
         folder = Path(__file__).resolve().parent
         self.vertex_shader_path = folder / VERTEX_SHADER_FILE
@@ -62,13 +61,12 @@ class Processor:
             dtype=np.uint,
         )
 
-        self.is_compiling = False
-        self.program, self.error = self.create_program()
+        self.program, self.error = self.compile_shaders()
         self.last_compiled_program = self.program
         self.last_compiler_error = self.error
         if self.error:
-            print(self.error)
-            raise RuntimeError("Could not compile shaders.")
+            self.show_error_popup(self.error, title="Cannot start with some compiling shaders.")
+            return
         self.vao, self.vbo, self.ebo = self.create_objects()
         self.texture = glGenTextures(1)
 
@@ -103,7 +101,7 @@ class Processor:
         window = glfw.create_window(
             self.width,
             self.height,
-            "SUPER GMAE",
+            self.info.full_title,
             None,
             None
         )
@@ -114,45 +112,30 @@ class Processor:
 
     def _glfw_error_callback(self, error, description):
         print("ERROR", error)
-        # self.show_error(description)
-        self.draw_text(description, self.width // 2, self.height // 2, (255, 0, 210))
+        self.show_error_popup(description)
+        # couldn't get text drawing to work for now. anyway.
+        # self.draw_text(description, self.width // 2, self.height // 2, (255, 0, 210))
 
-    def show_error(self, message):
-        # Convert the description to a Pygame Surface
-        text_surface = pygame.font.Font(None, 24).render(message, True, (255, 0, 210))
-        # Calculate the position to center the text
-        text_rect = text_surface.get_rect(center=(400, 300))
-        # Blit the text onto the screen
-        self.overlay.blit(text_surface, text_rect)
-        # Update the display
-        pygame.display.flip()
+    @staticmethod
+    def show_error_popup(message, title="Error"):
+        messagebox.showerror(title, message)
 
-    def draw_text(self, message, x=0, y=0, color=None):
-        font = pygame.font.Font(None, 24)
-        text_surface = font.render(message, True, color or (255, 255, 255))
-        text_data = pygame.image.tostring(text_surface, "RGBA", True)
-        width, height = text_surface.get_size()
-        glDisable(GL_DEPTH_TEST)
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glRasterPos3d(x, y, 0)
-        glDrawPixels(width, height, GL_RGBA, GL_UNSIGNED_BYTE, text_data)
-        glEnable(GL_DEPTH_TEST)
-        glDisable(GL_BLEND)
+    def compile_shaders(self):
+        self.info.update(self.window, is_compiling=True)
 
-    def create_program(self):
-        self.is_compiling = True
+        # could draw the file reading out of this because this could be done threaded (other than opengl). but not now
         try:
             with open(self.vertex_shader_path, 'r') as file:
                 vertex_shader_source = file.read()
         except Exception as exc:
             print("VERTEX SHADER FILE ERROR:", self.vertex_shader_path)
             raise exc
-            # return None, "Vertex Shader File Error"
         try:
             vertex_shader = shaders.compileShader(vertex_shader_source, GL_VERTEX_SHADER)
         except shaders.ShaderCompilationError as exc:
-            print("ERROR IN VERTEX SHADER ", exc.args[0])
+            print("== ERROR IN VERTEX SHADER =======" + 100 * "=")
+            print(exc.args[0])
+            print("=================================" + 100 * "=")
             return None, exc.args[0]
 
         try:
@@ -165,7 +148,9 @@ class Processor:
         try:
             fragment_shader = shaders.compileShader(fragment_shader_source, GL_FRAGMENT_SHADER)
         except shaders.ShaderCompilationError as exc:
-            print("ERROR IN FRAGMENT SHADER", exc.args[0])
+            print("== ERROR IN FRAGMENT SHADER ======" + 100 * "=")
+            print(exc.args[0])
+            print("==================================" + 100 * "=")
             return None, exc.args[0]
 
         try:
@@ -175,7 +160,7 @@ class Processor:
             return None, exc
 
         self.last_compiled_program = program
-        self.is_compiling = False
+        self.info.update(self.window, is_compiling=False)
         return program, None
 
     def create_objects(self):
@@ -279,18 +264,10 @@ class Processor:
             self.render
         )
         Processor.execute_with_error_handling(
-            "RENDER ERROR MESSAGE",
-            self.draw_text,
-            "LOL some tEXt",
-        )
-        Processor.execute_with_error_handling(
             "SWAP BUFFERS",
             glfw.swap_buffers,
             self.window
         )
-
-    def trigger_shader_reload(self):
-        self.compile_thread = threading.Thread(target=self.create_program)
 
     def run(self):
         if self.error:
@@ -298,7 +275,7 @@ class Processor:
             return
 
         self.run_started_at = perf_counter()
-        previous_state = LoopState.read(self)
+        previously = LoopState.read(self)
 
         log("Now Run")
         while not glfw.window_should_close(self.window):
@@ -306,12 +283,15 @@ class Processor:
             if not ok:
                 break
 
-            state_now = LoopState.read(self)
-            if previous_state.f5_pressed and not state_now.f5_pressed:
-                self.trigger_shader_reload()
-            if previous_state.compiling and not state_now.compiling:
-                self.program = self.last_compiled_program
-            previous_state = state_now
+            currently = LoopState.read(self)
+            if previously.f5_pressed and not currently.f5_pressed:
+                program, error = self.compile_shaders()
+                if error:
+                    self.show_error_popup(error, title="Cannot Replace Shaders")
+                else:
+                    log("Compiled Shaders (freshly from file).")
+                    self.program = program
+            previously = currently
 
             normalized_frame = self.normalize_frame(frame)
             self.process(frame)
@@ -323,7 +303,8 @@ class Processor:
                 self.first_run_completed = True
 
             if key_pressed(self.window, glfw.KEY_ESCAPE):
-                break
+                # don't close, just minify
+                glfw.iconify_window(self.window)
 
     @staticmethod
     def normalize_frame(frame):
