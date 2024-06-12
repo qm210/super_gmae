@@ -1,42 +1,40 @@
-from dataclasses import dataclass
-from typing import Iterable
-
 import cv2
 from capture_devices import devices
 
-
-@dataclass
-class CaptureDeviceInfo:
-    index: int
-    width: int
-    height: int
-    fps: float
-    frame_count: float
-    info: Iterable[str]
+from gmae.utils import log
 
 
-def find_the_next_best_shit():
-    captures = devices.run_with_param(device_type="video", result_=True)
+HDMI_USB_ADAPTER_SEARCH_STRING = "ugreen"
 
-    result = []
-    for i, ingo in enumerate(captures):
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            basic_info = CaptureDeviceInfo(
-                i,
-                int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-                cap.get(cv2.CAP_PROP_FPS),
-                cap.get(cv2.CAP_PROP_FRAME_COUNT),
-                ingo
-            )
-            result.append(basic_info)
-            cap.release()
 
-    print("Found Capture Devices")
-    for dev in result:
-        print(dev)
+def take_preferred_index(names):
+    if len(names) == 1:
+        return 0
 
-    chosen = result[-1]
-    print("For now, we will just take the last one:", chosen)
-    return chosen
+    def name_find(search_str, exclude=False):
+        search_casefold = search_str.casefold()
+        return next((
+            name
+            for name in names
+            if (not exclude and search_casefold in name.casefold())
+            or (exclude and search_casefold not in name.casefold())
+        ), None)
+
+    name_with_search_string = name_find(HDMI_USB_ADAPTER_SEARCH_STRING)
+    if name_with_search_string is not None:
+        return names.index(name_with_search_string)
+    non_integrated = name_find("integrated", exclude=True)
+    if non_integrated is not None:
+        return names.index(non_integrated)
+    return names[-1]
+
+
+def find_capture_device_name_with_index():
+    device_names = devices.run_with_param(device_type="video", result_=True)
+    log("Scanned Video Capture Devices.")
+    for name in device_names:
+        print("-> ", name)
+
+    # THIS DOES NOT WORK - the orders of the device_names and the open CV indices are different. lel
+    index = take_preferred_index(device_names)
+    return device_names[index], index
