@@ -120,6 +120,21 @@ class Processor:
     def show_error_popup(message, title="Error"):
         messagebox.showerror(title, message)
 
+    @staticmethod
+    def print_error_prettier(exc, title=""):
+        header, body_plus_end = exc.args[0].split(" b'")
+        body, _ = body_plus_end.split("\\n'")
+        error_lines = body.split("\\n")
+        total_frame_length = 200
+        upper_frame_length = total_frame_length - len("== ERROR IN ") - len(title) - 1
+        print(f"== ERROR IN {title.upper()} =======" + upper_frame_length * "=")
+        print(header)
+        for line in error_lines:
+            print(line)
+        print(total_frame_length * "=")
+        joined_errors = '\n'.join(error_lines)
+        return f"{header}\n\n{joined_errors}"
+
     def compile_shaders(self):
         self.info.update(self.window, is_compiling=True)
 
@@ -133,10 +148,8 @@ class Processor:
         try:
             vertex_shader = shaders.compileShader(vertex_shader_source, GL_VERTEX_SHADER)
         except shaders.ShaderCompilationError as exc:
-            print("== ERROR IN VERTEX SHADER =======" + 100 * "=")
-            print(exc.args[0])
-            print("=================================" + 100 * "=")
-            return None, exc.args[0]
+            message = self.print_error_prettier(exc, title="Vertex Shader")
+            return None, message
 
         try:
             with open(self.fragment_shader_path, 'r') as file:
@@ -144,14 +157,11 @@ class Processor:
         except Exception as exc:
             print("FRAGMENT SHADER FILE ERROR:", self.fragment_shader_path)
             raise exc
-            # return None, "Fragment Shader File Error"
         try:
             fragment_shader = shaders.compileShader(fragment_shader_source, GL_FRAGMENT_SHADER)
         except shaders.ShaderCompilationError as exc:
-            print("== ERROR IN FRAGMENT SHADER ======" + 100 * "=")
-            print(exc.args[0])
-            print("==================================" + 100 * "=")
-            return None, exc.args[0]
+            message = self.print_error_prettier(exc, title="Fragment Shader")
+            return None, message
 
         try:
             program = shaders.compileProgram(vertex_shader, fragment_shader)
