@@ -10,7 +10,7 @@ from OpenGL.GL import *
 from OpenGL.GL import shaders
 from OpenGL.GLUT import *
 
-from gmae.loop_state import LoopState, key_pressed
+from gmae.processor_utils import Rect, LoopState
 from gmae.utils import log, CaptureDeviceInfo, UniformLocations, TitleInfo
 
 WINDOW_HEIGHT = 1080
@@ -35,9 +35,11 @@ class Processor:
         glfw.error_callback = self._glfw_error_callback
 
         self.window = self.init_window()
+        self.fullscreen = False
+        self.last_window_rect = None
         glfw.make_context_current(self.window)
 
-        # for now we use tkinter for a message box for errors
+        # we just use tkinter for error message boxes
         self.tk_root = Tk()
         self.tk_root.withdraw()
 
@@ -98,6 +100,7 @@ class Processor:
     def init_window(self):
         if not glfw.init():
             raise Exception("GLFW cannot initiailize.")
+        glfw.window_hint(glfw.RESIZABLE, glfw.FALSE)
         window = glfw.create_window(
             self.width,
             self.height,
@@ -259,11 +262,13 @@ class Processor:
         glBindVertexArray(self.vao)
         glDrawElements(GL_TRIANGLES, len(self.indices), GL_UNSIGNED_INT, self.indices)
 
-    def process(self, frame):
+    def process(self, raw_frame):
+        # frame = self.normalize_frame(raw_frame)
+        frame = raw_frame
         Processor.execute_with_error_handling(
             "LOAD TEXTURE",
             self.load_texture,
-            frame,
+            frame
         )
         Processor.execute_with_error_handling(
             "SETUP PROGRAM",
@@ -273,11 +278,7 @@ class Processor:
             "RENDER",
             self.render
         )
-        Processor.execute_with_error_handling(
-            "SWAP BUFFERS",
-            glfw.swap_buffers,
-            self.window
-        )
+        glfw.swap_buffers(self.window)
 
     def run(self):
         if self.error:
@@ -285,7 +286,7 @@ class Processor:
             return
 
         self.run_started_at = perf_counter()
-        previously = LoopState.read(self)
+        previously = LoopState()
 
         log("Now Run")
         while not glfw.window_should_close(self.window):
@@ -301,20 +302,42 @@ class Processor:
                 else:
                     log("Compiled Shaders (freshly from file).")
                     self.program = program
+            if previously.f11_pressed and not currently.f11_pressed:
+                self.toggle_fullscreen()
             previously = currently
 
-            normalized_frame = self.normalize_frame(frame)
             self.process(frame)
-
-            glfw.poll_events()
-
             if not self.first_run_completed:
                 log("First processing completed.")
                 self.first_run_completed = True
 
-            if key_pressed(self.window, glfw.KEY_ESCAPE):
-                # don't close, just minify
+            glfw.poll_events()
+
+            if self.key_pressed(glfw.KEY_ESCAPE):
                 glfw.iconify_window(self.window)
+            elif self.key_pressed(glfw.KEY_F4):
+                break
+
+    def key_pressed(self, key):
+        return glfw.get_key(self.window, key) == glfw.PRESS
+
+    def toggle_fullscreen(self):
+        monitor = glfw.get_window_monitor(self.window)
+        screen = glfw.get_primary_monitor()
+        mode = glfw.get_video_mode(screen)
+        if self.fullscreen:
+            x, y, self.width, self.height = self.last_window_rect.unpack()
+            glfw.set_window_monitor(
+                self.window, None, x, y, self.width, self.height, mode.refresh_rate
+            )
+        else:
+            self.last_window_rect = Rect.read_window(self)
+            self.width, self.height = mode.size
+            glfw.set_window_monitor(
+                self.window, screen, self.width // 2, self.height // 2, self.width, self.height, mode.refresh_rate
+            )
+        self.fullscreen = not self.fullscreen
+        print("Fullscreen?", self.fullscreen, " - Size is now", self.width, "x", self.height)
 
     @staticmethod
     def normalize_frame(frame):

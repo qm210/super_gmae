@@ -69,7 +69,7 @@ void main()
     );
 
 	// some global distortion (wave)
-	// image_coord.x += 0.2 * cos(2. * image_coord.y - 0.08 * iTime);
+	image_coord.x += 0.2 * cos(2. * image_coord.y - 0.08 * iTime);
 
 	float pixelizor_scale = 0.01 + 0.0025 * cos(iTime * 0.82);
 	float distance_to_center = distance(image_coord, 0.5 * iResolution);
