@@ -34,3 +34,11 @@ if __name__ == '__main__':
     log("Start Processor")
     with Processor(args.index, name) as processor:
         processor.run()
+
+
+# TODO
+# HDMI-Audio ausgeben
+# Fullscreen fixen
+# Vergleich mit Kein-Shader auf Taste
+# Überlegen wie man da coden kann
+# NR4 loslegen lassen

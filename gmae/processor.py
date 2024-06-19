@@ -322,9 +322,13 @@ class Processor:
         return glfw.get_key(self.window, key) == glfw.PRESS
 
     def toggle_fullscreen(self):
-        monitor = glfw.get_window_monitor(self.window)
-        screen = glfw.get_primary_monitor()
-        mode = glfw.get_video_mode(screen)
+        monitors = glfw.get_monitors()
+        # get_window_monitor(self.window) breaks with some memory access error, I have no idea why
+        # monitor = glfw.get_window_monitor(self.window)
+        # monitor = glfw.get_primary_monitor()
+        monitor = monitors[-1]
+        print("For now, the full screen will always go to the last monitor available.")
+        mode = glfw.get_video_mode(monitor)
         if self.fullscreen:
             x, y, self.width, self.height = self.last_window_rect.unpack()
             glfw.set_window_monitor(
@@ -332,12 +336,17 @@ class Processor:
             )
         else:
             self.last_window_rect = Rect.read_window(self)
-            self.width, self.height = mode.size
+            aspect_ratio = self.height / self.width
+            if mode.size.width > self.width:
+                self.height = mode.size.height
+                self.width = int(self.height / aspect_ratio)
+            else:
+                self.width = mode.size.width
+                self.height = int(self.width * aspect_ratio)
             glfw.set_window_monitor(
-                self.window, screen, self.width // 2, self.height // 2, self.width, self.height, mode.refresh_rate
+                self.window, monitor, 0, 0, self.width, self.height, mode.refresh_rate
             )
         self.fullscreen = not self.fullscreen
-        print("Fullscreen?", self.fullscreen, " - Size is now", self.width, "x", self.height)
 
     @staticmethod
     def normalize_frame(frame):
