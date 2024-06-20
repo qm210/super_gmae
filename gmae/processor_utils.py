@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 @dataclass
 class LoopState:
     f5_pressed: bool = False
+    f8_pressed: bool = False
     f11_pressed: bool = False
     compiling: bool = False
 
@@ -18,6 +19,7 @@ class LoopState:
     def read(cls, processor: "Processor"):
         return cls(
             f5_pressed=processor.key_pressed(glfw.KEY_F5),
+            f8_pressed=processor.key_pressed(glfw.KEY_F8),
             f11_pressed=processor.key_pressed(glfw.KEY_F11),
             compiling=processor.info.is_compiling,
         )

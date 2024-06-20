@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from os import getenv
 from time import perf_counter
 from typing import Optional
 
@@ -50,7 +51,7 @@ class CaptureDeviceInfo:
 class UniformLocations:
     sampler: int
     resolution: int
-    time: int
+    time: Optional[int] = None
 
 
 @dataclass
@@ -71,3 +72,7 @@ class TitleInfo:
         if is_compiling is not None:
             self.is_compiling = is_compiling
         glfw.set_window_title(window, self.full_title)
+
+
+def env_means_true(name: str):
+    return getenv(name, "").casefold() in ["true", "1", "on"]

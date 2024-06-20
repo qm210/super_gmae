@@ -1,5 +1,6 @@
 import cv2
 from capture_devices import devices
+import sounddevice as sd
 
 from gmae.utils import log
 
@@ -37,4 +38,30 @@ def find_capture_device_name_with_index():
 
     # THIS DOES NOT WORK - the orders of the device_names and the open CV indices are different. lel
     index = take_preferred_index(device_names)
-    return device_names[index], index
+
+    actual_name = device_names[index].split(':')[-1].strip()
+    return actual_name, index
+
+
+def find_corresponding_sound_devices(name):
+    all_devices = sd.query_devices()
+    input_device = next((
+        device
+        for device in all_devices
+    if device['max_input_channels'] > 0
+        and name in device['name']
+    ), None)
+    output_devices = [device for device in all_devices if device['max_output_channels'] > 0]
+    default_output_index = sd.default.device[0]
+    output_device = output_devices[default_output_index]
+    return input_device, output_device
+
+
+def get_sound_stream_parameters(input, output):
+    # sd.default is always a (Output, Input) Tuple, it seems
+    return {
+        'channels': output['max_output_channels'],
+        'samplerate': output['default_samplerate'],
+        'blocksize': 1024,
+        'dtype': sd.default.dtype[0]
+    }

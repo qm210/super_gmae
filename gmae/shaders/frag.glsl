@@ -119,7 +119,4 @@ void main()
 	col.y += exp(-bobble_size * bobble_distance * bobble_distance);
 
     out_color = vec4(clamp(col, c.yyy, c.xxx), 1.0);
-
-    // was the first basic test: one bright cyan to annoy them all
-    // out_color = vec3(0.0, 1.0, 1.0, 1.0);
 }

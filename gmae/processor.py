@@ -1,6 +1,7 @@
 from pathlib import Path
 from time import perf_counter
 from tkinter import Tk, messagebox
+from traceback import print_exception
 
 import cv2
 import glfw
@@ -15,12 +16,14 @@ from gmae.utils import log, CaptureDeviceInfo, UniformLocations, TitleInfo
 
 WINDOW_HEIGHT = 1080
 
-VERTEX_SHADER_FILE = "shaders/vertex.glsl"
-FRAGMENT_SHADER_FILE = "shaders/frag.glsl"
+VERTEX_SHADER_FILE = "shaders/original_vertex.glsl"
+DRY_FRAGMENT_SHADER_FILE = "shaders/original_frag.glsl"
+WET_FRAGMENT_SHADER_FILE = "shaders/frag.glsl"
 
 
 class Processor:
-    def __init__(self, device_index, device_name):
+    def __init__(self, args, device_name):
+        device_index = args.index
         self.capture = cv2.VideoCapture(device_index)
         self.capture_info = CaptureDeviceInfo.read_from(self.capture, name=device_name)
         if self.capture_info is None:
@@ -34,10 +37,12 @@ class Processor:
 
         glfw.error_callback = self._glfw_error_callback
 
-        self.window = self.init_window()
-        self.fullscreen = False
+        self.window, self.monitor = self.init_window(args)
         self.last_window_rect = None
         glfw.make_context_current(self.window)
+        self.fullscreen = False
+        if args.fullscreen:
+            self.toggle_fullscreen()
 
         # we just use tkinter for error message boxes
         self.tk_root = Tk()
@@ -45,7 +50,8 @@ class Processor:
 
         folder = Path(__file__).resolve().parent
         self.vertex_shader_path = folder / VERTEX_SHADER_FILE
-        self.fragment_shader_path = folder / FRAGMENT_SHADER_FILE
+        self.dry_fragment_shader_path = folder / DRY_FRAGMENT_SHADER_FILE
+        self.wet_fragment_shader_path = folder / WET_FRAGMENT_SHADER_FILE
 
         # BL, BR, TR, TL
         self.vertices = np.array(
@@ -63,6 +69,11 @@ class Processor:
             dtype=np.uint,
         )
 
+        self.vertex_shader = None
+        self.dry_fragment_shader = None
+        self.wet_fragment_shader = None
+        self.dry_program = None
+        self.use_dry_program = False
         self.program, self.error = self.compile_shaders()
         self.last_compiled_program = self.program
         self.last_compiler_error = self.error
@@ -76,6 +87,10 @@ class Processor:
             sampler=glGetUniformLocation(self.program, "iPixelData"),
             resolution=glGetUniformLocation(self.program, "iResolution"),
             time=glGetUniformLocation(self.program, "iTime"),
+        )
+        self.dry_locations = UniformLocations(
+            sampler=glGetUniformLocation(self.dry_program, "iPixelData"),
+            resolution=glGetUniformLocation(self.dry_program, "iResolution"),
         )
 
         glClearColor(8.0, 0.0, 1.0, 1.0)  # some magenta shows that we didn't get far yet.
@@ -97,21 +112,28 @@ class Processor:
         glfw.terminate()
         self.capture.release()
 
-    def init_window(self):
+    def init_window(self, args):
         if not glfw.init():
             raise Exception("GLFW cannot initiailize.")
+        monitors = glfw.get_monitors()
+        try:
+            monitor = monitors[args.monitor]
+        except Exception as exc:
+            print_exception(exc)
+            monitor = None
         glfw.window_hint(glfw.RESIZABLE, glfw.FALSE)
+        glfw.window_hint(glfw.FOCUS_ON_SHOW, glfw.TRUE)
         window = glfw.create_window(
             self.width,
             self.height,
             self.info.full_title,
-            None,
+            monitor,
             None
         )
         if not window:
             glfw.terminate()
             raise Exception("GLFW cannot create window")
-        return window
+        return window, monitor
 
     def _glfw_error_callback(self, error, description):
         print("ERROR", error)
@@ -141,33 +163,56 @@ class Processor:
     def compile_shaders(self):
         self.info.update(self.window, is_compiling=True)
 
-        # could draw the file reading out of this because this could be done threaded (other than opengl). but not now
-        try:
-            with open(self.vertex_shader_path, 'r') as file:
-                vertex_shader_source = file.read()
-        except Exception as exc:
-            print("VERTEX SHADER FILE ERROR:", self.vertex_shader_path)
-            raise exc
-        try:
-            vertex_shader = shaders.compileShader(vertex_shader_source, GL_VERTEX_SHADER)
-        except shaders.ShaderCompilationError as exc:
-            message = self.print_error_prettier(exc, title="Vertex Shader")
-            return None, message
+        # do not refresh vertex and original fragment shader later, these are fixed
+
+        if self.vertex_shader is None:
+            # could draw the file reading to a different thread. not important right now.
+            try:
+                with open(self.vertex_shader_path, 'r') as file:
+                    vertex_shader_source = file.read()
+            except Exception as exc:
+                print("VERTEX SHADER FILE ERROR:", self.vertex_shader_path)
+                raise exc
+            try:
+                self.vertex_shader = shaders.compileShader(vertex_shader_source, GL_VERTEX_SHADER)
+            except shaders.ShaderCompilationError as exc:
+                message = self.print_error_prettier(exc, title="Vertex Shader")
+                return None, message
+
+        if self.dry_fragment_shader is None:
+            try:
+                with open(self.dry_fragment_shader_path, 'r') as file:
+                    original_fragment_shader_source = file.read()
+            except Exception as exc:
+                print("DRY FRAGMENT SHADER FILE ERROR:", self.dry_fragment_shader_path)
+                raise exc
+            try:
+                self.dry_fragment_shader = shaders.compileShader(original_fragment_shader_source, GL_FRAGMENT_SHADER)
+            except shaders.ShaderCompilationError as exc:
+                message = self.print_error_prettier(exc, title="Dry Fragment Shader")
+                return None, message
+
+        if self.dry_program is None:
+            try:
+                self.dry_program = shaders.compileProgram(self.vertex_shader, self.dry_fragment_shader)
+            except Exception as exc:
+                print("ERROR IN COMPILE DRY PROGRAM")
+                return None, exc
 
         try:
-            with open(self.fragment_shader_path, 'r') as file:
+            with open(self.wet_fragment_shader_path, 'r') as file:
                 fragment_shader_source = file.read()
         except Exception as exc:
-            print("FRAGMENT SHADER FILE ERROR:", self.fragment_shader_path)
+            print("FRAGMENT SHADER FILE ERROR:", self.wet_fragment_shader_path)
             raise exc
         try:
-            fragment_shader = shaders.compileShader(fragment_shader_source, GL_FRAGMENT_SHADER)
+            self.wet_fragment_shader = shaders.compileShader(fragment_shader_source, GL_FRAGMENT_SHADER)
         except shaders.ShaderCompilationError as exc:
             message = self.print_error_prettier(exc, title="Fragment Shader")
             return None, message
 
         try:
-            program = shaders.compileProgram(vertex_shader, fragment_shader)
+            program = shaders.compileProgram(self.vertex_shader, self.wet_fragment_shader)
         except Exception as exc:
             print("ERROR IN COMPILE PROGRAM")
             return None, exc
@@ -244,19 +289,26 @@ class Processor:
             raise e
 
     def setup_program(self):
-        # framebuffer: int = glGenFramebuffers(1)
-        # glBindFramebuffer(GL_FRAMEBUFFER, framebuffer)
-        # glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, self.tex_id, 0)
-        glUseProgram(self.program)
-        glUniform1i(self.locations.sampler, 0)
-        glUniform2f(self.locations.resolution, self.width, self.height)
-
-        elapsed_seconds = (
-            perf_counter() - self.run_started_at
-            if self.run_started_at is not None
-            else 0
+        glUseProgram(
+            self.program
+            if not self.use_dry_program
+            else self.dry_program
         )
-        glUniform1f(self.locations.time, elapsed_seconds)
+        locations = (
+            self.locations
+            if not self.use_dry_program
+            else self.dry_locations
+        )
+        glUniform1i(locations.sampler, 0)
+        glUniform2f(locations.resolution, self.width, self.height)
+
+        if locations.time is not None:
+            elapsed_seconds = (
+                perf_counter() - self.run_started_at
+                if self.run_started_at is not None
+                else 0
+            )
+            glUniform1f(locations.time, elapsed_seconds)
 
     def render(self):
         glBindVertexArray(self.vao)
@@ -295,6 +347,7 @@ class Processor:
                 break
 
             currently = LoopState.read(self)
+
             if previously.f5_pressed and not currently.f5_pressed:
                 program, error = self.compile_shaders()
                 if error:
@@ -302,6 +355,8 @@ class Processor:
                 else:
                     log("Compiled Shaders (freshly from file).")
                     self.program = program
+            if previously.f8_pressed and not currently.f8_pressed:
+                self.use_dry_program = not self.use_dry_program
             if previously.f11_pressed and not currently.f11_pressed:
                 self.toggle_fullscreen()
             previously = currently
@@ -322,13 +377,11 @@ class Processor:
         return glfw.get_key(self.window, key) == glfw.PRESS
 
     def toggle_fullscreen(self):
-        monitors = glfw.get_monitors()
         # get_window_monitor(self.window) breaks with some memory access error, I have no idea why
         # monitor = glfw.get_window_monitor(self.window)
         # monitor = glfw.get_primary_monitor()
-        monitor = monitors[-1]
-        print("For now, the full screen will always go to the last monitor available.")
-        mode = glfw.get_video_mode(monitor)
+        # ah well. let's pass it by CLI argument.
+        mode = glfw.get_video_mode(self.monitor)
         if self.fullscreen:
             x, y, self.width, self.height = self.last_window_rect.unpack()
             glfw.set_window_monitor(
@@ -344,9 +397,10 @@ class Processor:
                 self.width = mode.size.width
                 self.height = int(self.width * aspect_ratio)
             glfw.set_window_monitor(
-                self.window, monitor, 0, 0, self.width, self.height, mode.refresh_rate
+                self.window, self.monitor, 0, 0, self.width, self.height, mode.refresh_rate
             )
         self.fullscreen = not self.fullscreen
+        print("Is now fullscreen?", self.fullscreen, "(full screen will always be on the last monitor available.")
 
     @staticmethod
     def normalize_frame(frame):

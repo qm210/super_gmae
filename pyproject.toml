@@ -7,13 +7,15 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
+numpy = "^2.0.0"
 opencv-python = "^4.10.0.82"
 pywin32 = "^306"
 capture-devices = "^4.2"
 glfw = "^2.7.0"
+pygame = "^2.5.2"
+sounddevice = "^0.4.7"
 pyopengl = "^3.1.7"
 pyopengl-accelerate = "^3.1.7"
-pygame = "^2.5.2"
 
 
 [build-system]
