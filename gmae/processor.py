@@ -15,6 +15,7 @@ from gmae.processor_utils import Rect, LoopState
 from gmae.utils import log, CaptureDeviceInfo, UniformLocations, TitleInfo
 
 WINDOW_HEIGHT = 1080
+SPACE_FOR_WINDOWS_SHIT = 80
 
 VERTEX_SHADER_FILE = "shaders/original_vertex.glsl"
 DRY_FRAGMENT_SHADER_FILE = "shaders/original_frag.glsl"
@@ -22,8 +23,9 @@ WET_FRAGMENT_SHADER_FILE = "shaders/frag.glsl"
 
 
 class Processor:
-    def __init__(self, args, device_name):
+    def __init__(self, args, device_name, audio_stream):
         device_index = args.index
+        self.audio_stream = audio_stream
         self.capture = cv2.VideoCapture(device_index)
         self.capture_info = CaptureDeviceInfo.read_from(self.capture, name=device_name)
         if self.capture_info is None:
@@ -32,7 +34,6 @@ class Processor:
             print("Opened Device", device_index, self.capture_info)
 
         self.height = WINDOW_HEIGHT
-        self.width = int(WINDOW_HEIGHT * self.capture_info.width / self.capture_info.height)
         self.info = TitleInfo("SUPER GMAE")
 
         glfw.error_callback = self._glfw_error_callback
@@ -109,8 +110,16 @@ class Processor:
         glDeleteBuffers(1, [self.ebo])
         glDeleteVertexArrays(1, [self.vao])
         glDeleteTextures(1, [self.texture])
+        glfw.destroy_window(self.window)
         glfw.terminate()
         self.capture.release()
+
+    @property
+    def width(self):
+        """
+        As this assumes landscape orientation, the height is what counts and the width is derived
+        """
+        return int(self.height * self.capture_info.width / self.capture_info.height)
 
     def init_window(self, args):
         if not glfw.init():
@@ -121,18 +130,33 @@ class Processor:
         except Exception as exc:
             print_exception(exc)
             monitor = None
+        mode = glfw.get_video_mode(monitor)
+        print("Monitor Mode:", str(mode))
+        self.height = min(self.height, mode.size.height - SPACE_FOR_WINDOWS_SHIT)
         glfw.window_hint(glfw.RESIZABLE, glfw.FALSE)
         glfw.window_hint(glfw.FOCUS_ON_SHOW, glfw.TRUE)
         window = glfw.create_window(
             self.width,
             self.height,
             self.info.full_title,
-            monitor,
+            None,
             None
         )
         if not window:
             glfw.terminate()
             raise Exception("GLFW cannot create window")
+        x, y = glfw.get_monitor_pos(monitor)
+        x += (mode.size.width - self.width) // 2
+        y += (mode.size.height - self.height) // 2
+        glfw.set_window_monitor(
+            window,
+            None,
+            x,
+            y,
+            self.width,
+            self.height,
+            mode.refresh_rate
+        )
         return window, monitor
 
     def _glfw_error_callback(self, error, description):
@@ -314,9 +338,8 @@ class Processor:
         glBindVertexArray(self.vao)
         glDrawElements(GL_TRIANGLES, len(self.indices), GL_UNSIGNED_INT, self.indices)
 
-    def process(self, raw_frame):
-        # frame = self.normalize_frame(raw_frame)
-        frame = raw_frame
+    def process(self, frame):
+        # frame = self.normalize_frame(frame)
         Processor.execute_with_error_handling(
             "LOAD TEXTURE",
             self.load_texture,
@@ -359,6 +382,8 @@ class Processor:
                 self.use_dry_program = not self.use_dry_program
             if previously.f11_pressed and not currently.f11_pressed:
                 self.toggle_fullscreen()
+            if previously.f12_pressed and not currently.f12_pressed:
+                self.audio_stream.toggle_mute()
             previously = currently
 
             self.process(frame)
@@ -369,7 +394,11 @@ class Processor:
             glfw.poll_events()
 
             if self.key_pressed(glfw.KEY_ESCAPE):
-                glfw.iconify_window(self.window)
+                log("Closing", self.fullscreen)
+                if self.fullscreen:
+                    break
+                else:
+                    glfw.iconify_window(self.window)
             elif self.key_pressed(glfw.KEY_F4):
                 break
 
@@ -383,19 +412,18 @@ class Processor:
         # ah well. let's pass it by CLI argument.
         mode = glfw.get_video_mode(self.monitor)
         if self.fullscreen:
-            x, y, self.width, self.height = self.last_window_rect.unpack()
+            x, y, _w, self.height = self.last_window_rect.unpack()
             glfw.set_window_monitor(
                 self.window, None, x, y, self.width, self.height, mode.refresh_rate
             )
         else:
             self.last_window_rect = Rect.read_window(self)
             aspect_ratio = self.height / self.width
-            if mode.size.width > self.width:
-                self.height = mode.size.height
-                self.width = int(self.height / aspect_ratio)
-            else:
-                self.width = mode.size.width
-                self.height = int(self.width * aspect_ratio)
+            self.height = (
+                mode.size.height
+                if mode.size.width >= self.width
+                else int(mode.size.width * aspect_ratio)
+            )
             glfw.set_window_monitor(
                 self.window, self.monitor, 0, 0, self.width, self.height, mode.refresh_rate
             )

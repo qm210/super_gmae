@@ -3,10 +3,9 @@ from os import getenv
 from platform import system
 
 import cv2
-import sounddevice as sd
 
-from gmae.find_devices import find_capture_device_name_with_index, find_corresponding_sound_devices, \
-    get_sound_stream_parameters
+from gmae.find_video_captures import find_capture_device_name_with_index
+from gmae.AudioStream import AudioStream
 from gmae.processor import Processor
 from gmae.utils import log, env_means_true
 
@@ -48,16 +47,8 @@ if __name__ == '__main__':
     log("Find Devices")
     name, index_ = find_capture_device_name_with_index()
 
-    sound_input, sound_output = find_corresponding_sound_devices(name)
-    stream_params = get_sound_stream_parameters(sound_input, sound_output)
-
     log("Start Audio Stream")
-    with sd.Stream(**stream_params):
+    with AudioStream(name, mute=True) as audio:
         log("Start Video Processor")
-        with Processor(args, name) as processor:
+        with Processor(args, name, audio) as processor:
             processor.run()
-
-
-# TODO
-# HDMI-Audio ausgeben
-# Überlegen wie updates eingespielt werden. man da coden kann
