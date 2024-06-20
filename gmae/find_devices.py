@@ -35,6 +35,8 @@ def find_capture_device_name_with_index():
     log("Scanned Video Capture Devices.")
     for name in device_names:
         print("-> ", name)
+    if not device_names:
+        raise EnvironmentError("There are no Video Capture devices.")
 
     # THIS DOES NOT WORK - the orders of the device_names and the open CV indices are different. lel
     index = take_preferred_index(device_names)
