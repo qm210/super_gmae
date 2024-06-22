@@ -433,6 +433,10 @@ class Processor:
                     glfw.iconify_window(self.window)
             if self.key_pressed(Key.ABORT):
                 break
+            if self.key_pressed(Key.PRINT_DEBUG):
+                self.effects.print_debug()
+                print("Running Time:", self.elapsed_seconds, "sec")
+                print("Max Amplitude:", self.audio_stream.max_amplitude_since_unmuting)
 
             glfw.poll_events()
 

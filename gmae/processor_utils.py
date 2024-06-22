@@ -19,6 +19,9 @@ class Key(Enum):
     FULLSCREEN = glfw.KEY_F11
     MUTE = glfw.KEY_F12
     SHOW_ORIGINAL = glfw.KEY_F8
+    PRINT_DEBUG = glfw.KEY_F1
+
+    # effect annoyance controls
     INCREASE_GREEN_BLOB = glfw.KEY_Q
     DECREASE_GREEN_BLOB = glfw.KEY_A
     INCREASE_EFFECT_A = glfw.KEY_W
@@ -122,12 +125,14 @@ class EffectsState:
         for effect_id in self.strength:
             self.strength[effect_id] = random()
 
+    def print_debug(self):
+        print("Effect Strengths now:")
+        for id in self.strength:
+            print(f"  {id.name} = {self.strength[id]}")
+
     def handle_input(self, processor: "Processor"):
         if processor.key_pressed(Key.RANDOMIZE_ALL_EFFECTS):
             self.randomize_amounts()
-            print("Effect Strengths now:")
-            for id in self.strength:
-                print(f"{id.name} = {self.strength[id]}")
             return
 
         for key in Key:
