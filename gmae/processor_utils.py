@@ -81,10 +81,10 @@ class EffectFlash:
     remaining_sec: float
     duration_sec: float
 
-    _min_seconds_between_flashes = 15
-    _max_seconds_between_flashes = 60
+    _min_seconds_between_flashes = 20
+    _max_seconds_between_flashes = 90
     _min_seconds_flash_duration = 3
-    _max_seconds_flash_duration = 20
+    _max_seconds_flash_duration = 50
 
     def __init__(self):
         super().__init__()
