@@ -81,10 +81,10 @@ class EffectFlash:
     remaining_sec: float
     duration_sec: float
 
-    _min_seconds_between_flashes = 20
-    _max_seconds_between_flashes = 90
-    _min_seconds_flash_duration = 3
-    _max_seconds_flash_duration = 50
+    _min_seconds_between_flashes = 10
+    _max_seconds_between_flashes = 60
+    _min_seconds_flash_duration = 6
+    _max_seconds_flash_duration = 40
 
     def __init__(self):
         super().__init__()
@@ -151,7 +151,7 @@ class EffectsState:
             self.strength[id] = clamp(
                 self.strength[id] + inc * step_size
             )
-        print(f"Amount of Effect {id} now:", self.strength[id])
+        print(f"Effect {id.name} x ", self.strength[id])
 
     def choose_next_flash(self, effect_id=None):
         if effect_id is None:

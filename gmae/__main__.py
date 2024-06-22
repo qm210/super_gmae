@@ -34,6 +34,13 @@ def parse_args():
                         default=monitor_index,
                         help="Which monitor number to launch the shit (default is the last one)"
                         )
+    audio_output_name = getenv('GMAE_AUDIO_OUTPUT', '')
+    parser.add_argument("--audio-out",
+                        "-audio",
+                        type=str,
+                        default=audio_output_name,
+                        help="A (partial) string to identify the audio output, it will take the first that matches"
+                        )
     return parser.parse_args()
 
 
@@ -48,7 +55,7 @@ if __name__ == '__main__':
     name, index_ = find_capture_device_name_with_index()
 
     log("Start Audio Stream")
-    with AudioStream(name, mute=True) as audio:
+    with AudioStream(args, name, mute=True) as audio:
         log("Start Video Processor")
         with Processor(args, name, audio) as processor:
             processor.run()
