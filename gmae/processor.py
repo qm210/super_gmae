@@ -434,9 +434,10 @@ class Processor:
             if self.key_pressed(Key.ABORT):
                 break
             if self.key_pressed(Key.PRINT_DEBUG):
-                self.effects.print_debug()
+                print("======= DEBUG =======")
                 print("Running Time:", self.elapsed_seconds, "sec")
-                print("Max Amplitude:", self.audio_stream.max_amplitude_since_unmuting)
+                self.effects.print_debug()
+                self.audio_stream.print_debug()
 
             glfw.poll_events()
 

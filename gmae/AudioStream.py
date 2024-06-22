@@ -68,9 +68,13 @@ class AudioStream:
         # elapsed_sec = time.currentTime - self.first_timestamp
         gain = 0 if self.mute else 1
         outdata[:] = gain * indata
-        self.max_amplitude_since_unmuting = abs(max(outdata))
+        self.max_amplitude_since_unmuting = abs(indata.max())
 
     def toggle_mute(self):
         self.mute = not self.mute
         if not self.mute:
             self.max_amplitude_since_unmuting = 0
+
+    def print_debug(self):
+        muted_info = " [MUTED]" if self.mute else ""
+        print("Max Amplitude:", self.max_amplitude_since_unmuting, muted_info)
