@@ -12,34 +12,34 @@ from gmae.utils import log, env_means_true
 
 def parse_args():
     parser = argparse.ArgumentParser()
-
-    capture_index = getenv('GMAE_CAPTURE_INDEX', 0)
     parser.add_argument("--index",
                         "-i",
                         type=int,
-                        default=capture_index,
+                        default=getenv('GMAE_CAPTURE_INDEX', 0),
                         help="OpenCV Index of the Video Capture Device"
                         )
-    fullscreen = env_means_true('GMAE_FULLSCREEN')
     parser.add_argument("--fullscreen",
                         "-f",
                         type=bool,
-                        default=fullscreen,
+                        default=env_means_true('GMAE_FULLSCREEN'),
                         help="Whether to start in full screen"
                         )
-    monitor_index = getenv('GMAE_MONITOR', -1)
     parser.add_argument("--monitor",
                         "-m",
                         type=int,
-                        default=monitor_index,
+                        default=getenv('GMAE_MONITOR', -1),
                         help="Which monitor number to launch the shit (default is the last one)"
                         )
-    audio_output_name = getenv('GMAE_AUDIO_OUTPUT', '')
     parser.add_argument("--audio-out",
                         "-audio",
                         type=str,
-                        default=audio_output_name,
+                        default=getenv('GMAE_AUDIO_OUTPUT', ''),
                         help="A (partial) string to identify the audio output, it will take the first that matches"
+                        )
+    parser.add_argument("--mute",
+                        type=bool,
+                        default=env_means_true('GMAE_MUTE'),
+                        help="Whether to start in full screen"
                         )
     return parser.parse_args()
 
@@ -55,7 +55,7 @@ if __name__ == '__main__':
     name, index_ = find_capture_device_name_with_index()
 
     log("Start Audio Stream")
-    with AudioStream(args, name, mute=True) as audio:
+    with AudioStream(args, name) as audio:
         log("Start Video Processor")
         with Processor(args, name, audio) as processor:
             processor.run()

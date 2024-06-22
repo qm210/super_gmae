@@ -2,11 +2,11 @@ import sounddevice as sd
 
 
 class AudioStream:
-    def __init__(self, args, name, mute=False):
+    def __init__(self, args, name):
         self.input_device, self.output_device = \
             self.find_corresponding_sound_devices(name, args.audio_out)
         self.stream = self.create_stream()
-        self.mute = mute
+        self.mute = args.mute
         if self.stream is not None:
             self.stream.start()
         # for debugging
