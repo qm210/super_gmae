@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from os import getenv
 from time import perf_counter
@@ -52,6 +52,7 @@ class UniformLocations:
     sampler: int
     resolution: int
     time: Optional[int] = None
+    effect_amount: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -76,3 +77,11 @@ class TitleInfo:
 
 def env_means_true(name: str):
     return getenv(name, "").casefold() in ["true", "1", "on"]
+
+
+def clamp(number, min_value=0, max_value=1):
+    if number < min_value:
+        return min_value
+    elif number > max_value:
+        return max_value
+    return number

@@ -1,3 +1,5 @@
+from enum import Enum
+from math import exp
 from pathlib import Path
 from time import perf_counter
 from tkinter import Tk, messagebox
@@ -11,7 +13,7 @@ from OpenGL.GL import *
 from OpenGL.GL import shaders
 from OpenGL.GLUT import *
 
-from gmae.processor_utils import Rect, LoopState
+from gmae.processor_utils import Rect, LoopState, Key, EffectsState, EffectId
 from gmae.utils import log, CaptureDeviceInfo, UniformLocations, TitleInfo
 
 WINDOW_HEIGHT = 1080
@@ -88,6 +90,13 @@ class Processor:
             sampler=glGetUniformLocation(self.program, "iPixelData"),
             resolution=glGetUniformLocation(self.program, "iResolution"),
             time=glGetUniformLocation(self.program, "iTime"),
+            effect_amount={
+                EffectId.A: glGetUniformLocation(self.program, "aEffectA"),
+                EffectId.B: glGetUniformLocation(self.program, "aEffectB"),
+                EffectId.C: glGetUniformLocation(self.program, "aEffectC"),
+                EffectId.D: glGetUniformLocation(self.program, "aEffectD"),
+                EffectId.GreenBlob: glGetUniformLocation(self.program, "aEffectGreenBlob"),
+            }
         )
         self.dry_locations = UniformLocations(
             sampler=glGetUniformLocation(self.dry_program, "iPixelData"),
@@ -98,6 +107,9 @@ class Processor:
         glClear(GL_COLOR_BUFFER_BIT)
         self.raise_gl_error_if_exists()
 
+        self.effects = EffectsState.random()
+        self.elapsed_seconds = 0
+        self.last_step_at = None
         self.run_started_at = None
         self.first_run_completed = False
         log("Initialized Processor")
@@ -106,10 +118,11 @@ class Processor:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        glDeleteBuffers(1, [self.vbo])
-        glDeleteBuffers(1, [self.ebo])
-        glDeleteVertexArrays(1, [self.vao])
-        glDeleteTextures(1, [self.texture])
+        if self.program is not None:
+            glDeleteBuffers(1, [self.vbo])
+            glDeleteBuffers(1, [self.ebo])
+            glDeleteVertexArrays(1, [self.vao])
+            glDeleteTextures(1, [self.texture])
         glfw.destroy_window(self.window)
         glfw.terminate()
         self.capture.release()
@@ -326,13 +339,31 @@ class Processor:
         glUniform1i(locations.sampler, 0)
         glUniform2f(locations.resolution, self.width, self.height)
 
+        if self.last_step_at is None:
+            self.last_step_at = self.run_started_at
+        current_step_at = perf_counter()
+        delta_seconds = current_step_at - self.last_step_at
+        self.elapsed_seconds += delta_seconds
+        self.last_step_at = current_step_at
+
         if locations.time is not None:
-            elapsed_seconds = (
-                perf_counter() - self.run_started_at
-                if self.run_started_at is not None
-                else 0
-            )
-            glUniform1f(locations.time, elapsed_seconds)
+            glUniform1f(locations.time, self.elapsed_seconds)
+
+        for effect_id in EffectId:
+            flash = self.effects.next_flash.get(effect_id, None)
+            if flash is None:
+                self.effects.choose_next_flash(effect_id=effect_id)
+                continue
+            amount_location = locations.effect_amount.get(effect_id, -1)
+            if amount_location < 0:
+                continue
+
+            flash.remaining_sec -= delta_seconds
+            strength = self.effects.strength.get(effect_id, 0)
+            amount = strength * flash.current_value
+            glUniform1f(amount_location, amount)
+            if flash.is_over:
+                self.effects.choose_next_flash(effect_id=effect_id)
 
     def render(self):
         glBindVertexArray(self.vao)
@@ -361,6 +392,7 @@ class Processor:
             return
 
         self.run_started_at = perf_counter()
+        self.elapsed_seconds = 0
         previously = LoopState()
 
         log("Now Run")
@@ -386,23 +418,27 @@ class Processor:
                 self.audio_stream.toggle_mute()
             previously = currently
 
+            self.effects.handle_input(self)
+
             self.process(frame)
+
             if not self.first_run_completed:
                 log("First processing completed.")
                 self.first_run_completed = True
 
-            glfw.poll_events()
-
             if self.key_pressed(glfw.KEY_ESCAPE):
-                log("Closing", self.fullscreen)
                 if self.fullscreen:
                     break
                 else:
                     glfw.iconify_window(self.window)
-            elif self.key_pressed(glfw.KEY_F4):
+            if self.key_pressed(Key.ABORT):
                 break
 
+            glfw.poll_events()
+
     def key_pressed(self, key):
+        if isinstance(key, Enum):
+            key = key.value
         return glfw.get_key(self.window, key) == glfw.PRESS
 
     def toggle_fullscreen(self):

@@ -1,22 +1,30 @@
-from math import sin
-
 import sounddevice as sd
 
 
 class AudioStream:
     def __init__(self, name, mute=False):
         input_device, output_device = self.find_corresponding_sound_devices(name)
-        self.params = self.get_sound_stream_parameters(input_device, output_device)
-        self.stream = sd.Stream(**self.params)
+        self.stream = self.create_stream(input_device, output_device)
         self.mute = mute
-        self.stream.start()
+        if self.stream is not None:
+            self.stream.start()
+        # for debugging
         self.first_timestamp = None
+        self.max_amplitude_since_unmuting = 0
 
     def __enter__(self):
         return self
 
     def __exit__(self, _type, _val, _tb):
+        if self.stream is None:
+            return
         self.stream.stop()
+
+    def create_stream(self, input, output):
+        if input is None:
+            return None
+        params = self.get_sound_stream_parameters(input, output)
+        return sd.Stream(**params)
 
     @staticmethod
     def find_corresponding_sound_devices(name):
@@ -60,6 +68,9 @@ class AudioStream:
         # elapsed_sec = time.currentTime - self.first_timestamp
         gain = 0 if self.mute else 1
         outdata[:] = gain * indata
+        self.max_amplitude_since_unmuting = abs(max(outdata))
 
     def toggle_mute(self):
         self.mute = not self.mute
+        if not self.mute:
+            self.max_amplitude_since_unmuting = 0
